@@ -48,7 +48,12 @@ static_resources:
                     value: |
                       {
                         "mockEnable": false,
-                        "isOpen": true
+                        "isOpen": true,
+                        "actions":[
+                          {"type":"removeLeadingZero", "fields":["price","age"],"recursive":true},
+                          {"type":"paddingZero", "fields":["price","age"],"recursive":true, "count":5},
+                          {"type":"concat", "fields":["firstName","lastName"],"recursive":true,"newName":"fullName"}
+                        ]
                       }
           - name: envoy.filters.http.router
             typed_config:
