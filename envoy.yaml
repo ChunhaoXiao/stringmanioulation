@@ -51,7 +51,7 @@ static_resources:
                         "isOpen": true,
                         "actions":[
                           {"type":"removeLeadingZero", "fields":["price","age"],"recursive":true},
-                          {"type":"paddingZero", "fields":["price","age"],"recursive":true, "count":5},
+                          {"type":"paddingZero", "fields":{"price":3,"age":4},"recursive":true},
                           {"type":"concat", "fields":["firstName","lastName"],"recursive":true,"newName":"fullName"}
                         ]
                       }
