@@ -80,8 +80,9 @@ func parseConfig(json gjson.Result, config *MyConfig, log logs.Log) error {
 					rmLeadingZero.Fields = append(rmLeadingZero.Fields, value.String())
 					return true
 				})
+				config.RemoveLeadingZero = rmLeadingZero
 			}
-			config.RemoveLeadingZero = rmLeadingZero
+
 		}
 
 		if action == "paddingZero" {
@@ -147,6 +148,7 @@ func parseConfig(json gjson.Result, config *MyConfig, log logs.Log) error {
 	}
 
 	fmt.Println("cfg=========================>", config)
+
 	return nil
 }
 
@@ -161,6 +163,9 @@ func onHttpRequestHeaders(ctx wrapper.HttpContext, config MyConfig, log logs.Log
 func onHttpRequestBody(ctx wrapper.HttpContext, config MyConfig, body []byte) types.Action {
 	result := make(map[string]interface{})
 	json.Unmarshal(body, &result)
+
+	sb := Substring{Field: "aaa"}
+	fmt.Println("sb is#######", sb)
 	// for k, v := range result {
 	// 	//fmt.Println(k, "===>", v)
 	// }
@@ -183,10 +188,26 @@ func onHttpRequestBody(ctx wrapper.HttpContext, config MyConfig, body []byte) ty
 	// pzr := paddingZero(result, config.PaddingZeros)
 	// fmt.Println("padding Zero result########################", pzr)
 
-	//concatField2(result)
-	ccc := concatField2(result, config.ConcatFields)
+	/*
+		if len(config.RemoveLeadingZero.Fields) > 0 {
+			result = trimLeadingZeros(result, config.RemoveLeadingZero)
+		}
 
-	fmt.Println("ccc#########################", ccc)
+		if len(config.PaddingZeros) > 0 {
+			result = paddingZero(result, config.PaddingZeros)
+		}
+
+		if len(config.ConcatFields) > 0 {
+			result = concatField2(result, config.ConcatFields)
+		}
+
+		if len(config.Substrings) > 0 {
+			result = substrings(result, config.Substrings)
+		} */
+	//ccc := concatField2(result, config.ConcatFields)
+	fmt.Println("concatFieldssssws=>", config.ConcatFields)
+	concatField3(result, config.ConcatFields)
+	//fmt.Println("ccc#########################", result)
 	return types.ActionContinue
 }
 
@@ -275,8 +296,6 @@ func concatField2(datas map[string]interface{}, concat []ConcatFields) map[strin
 func trimLeadingZeros(datas map[string]interface{}, removeLeadingZero RemoveLeadingZero) map[string]interface{} {
 
 	for _, field := range removeLeadingZero.Fields {
-		fmt.Println("field================>", field)
-
 		if strings.Contains(field, ".") {
 			accessor, _ := dotaccess.NewAccessorDot[string](&datas, field)
 			fieldValue := accessor.Get()
@@ -295,21 +314,25 @@ func substrings(datas map[string]interface{}, substrings []Substring) map[string
 	fmt.Println("substring------------------------------>", substrings)
 	for _, substring := range substrings {
 		field := substring.Field
+		length := substring.Lenght
 		if strings.Contains(field, ".") {
-			fmt.Println("###################################", substring.StartIndex)
 			accessor, err := dotaccess.NewAccessorDot[string](&datas, field)
 			if err == nil {
 				value := accessor.Get()
-				fmt.Println("value is:", value)
-				fmt.Println("startINdex####", substring.StartIndex)
-				substr := value[substring.StartIndex : substring.StartIndex+substring.Lenght]
+				if length < 1 {
+					length = len(value)
+				}
+				substr := value[substring.StartIndex : substring.StartIndex+length]
 				accessor.Set(substr)
 			}
 		} else {
 			value, ok := datas[field]
 			if ok {
 				strValue := fmt.Sprintf("%v", value)
-				datas[field] = strValue[substring.StartIndex : substring.StartIndex+substring.Lenght]
+				if length < 0 {
+					length = len(strValue)
+				}
+				datas[field] = strValue[substring.StartIndex : substring.StartIndex+length]
 			}
 		}
 	}
@@ -335,6 +358,60 @@ func paddingZero(datas map[string]interface{}, fields []PaddingZero) map[string]
 		}
 	}
 	return datas
+}
+
+func concatField3(datas map[string]interface{}, concat []ConcatFields) map[string]interface{} {
+	for _, items := range concat {
+		if strings.Contains(items.NewName, ".") {
+			fieldNameArr := strings.Split(items.NewName, ".")
+			count := len(fieldNameArr)
+			if count == 3 {
+				datas[fieldNameArr[0]].(map[string]interface{})[fieldNameArr[1]].(map[string]interface{})[fieldNameArr[2]] = "" //strings.Join(concatedValue, connector)
+			}
+
+			// var res map[string]interface{}
+
+			// for _, part := range fieldNameArr {
+			// 	_, ok := res[part]
+			// 	if !ok {
+			// 		res = datas[part].(map[string]interface{})
+			// 	} else {
+			// 		res = res[part].(map[string]interface{})
+			// 	}
+			// 	//res = datas[part].(map[string]interface{})
+			// }
+
+			fmt.Println("res=========>", res)
+
+			// concatedValue := []string{}
+			// connector := items.Connector
+			// for _, fieldName := range items.Fields {
+			// 	accessor, err := dotaccess.NewAccessorDot[string](&datas, fieldName)
+			// 	if err == nil {
+			// 		concatedValue = append(concatedValue, accessor.Get())
+			// 		if items.DeleteConcated == true {
+			// 			delete(datas[fieldNameArr[0]].(map[string]interface{}), strings.Split(fieldName, ".")[1])
+			// 		}
+			// 	}
+			// }
+			//datas[fieldNameArr[0]].(map[string]interface{})[fieldNameArr[1]] = strings.Join(concatedValue, connector)
+		} else {
+			concatedValue := []string{}
+			for _, fieldName := range items.Fields {
+				value, ok := datas[fieldName]
+				if ok {
+					concatedValue = append(concatedValue, fmt.Sprintf("%v", value))
+					if items.DeleteConcated == true {
+						delete(datas, fieldName)
+					}
+				}
+			}
+			datas[items.NewName] = strings.Join(concatedValue, items.Connector)
+		}
+	}
+
+	return datas
+
 }
 
 func removeLeadingZeros(s string) string {

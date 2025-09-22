@@ -3,6 +3,7 @@ module string-manipulation
 go 1.24.4
 
 require (
+	github.com/claytonsingh/golib/dotaccess
 	github.com/higress-group/proxy-wasm-go-sdk v0.0.0-20250822030947-8345453fddd0
 	github.com/higress-group/wasm-go v1.0.2-0.20250911113549-cbf1cfcce774
 	github.com/tidwall/gjson v1.18.0
