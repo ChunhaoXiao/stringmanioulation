@@ -52,7 +52,8 @@ static_resources:
                         "actions":[
                           {"type":"removeLeadingZero", "fields":["price","age","info.phone"]},
                           {"type":"paddingZero", "fields":{"price":3,"age":4,"info.phone":7}},
-                          {"type":"concat", "concatContent":[{"concatFields":["firstName","lastName"],"newName":"aaa"},{"concatFields":["info.email","info.phone"],"newName":"info.contacts"}]}
+                          {"type":"concat", "concatContent":[{"concatFields":["firstName","lastName"],"newName":"fullName"},{"concatFields":["info.email","info.phone"],"newName":"info.contacts","connector":"~~~~","deleteConcated":false}]},
+                          {"type":"substring", "fields":[{"name":"card","startIdex":0,"length":3},{"name":"info.password","startIndex":2,"length":4}]}
                         ]
                       }
           - name: envoy.filters.http.router

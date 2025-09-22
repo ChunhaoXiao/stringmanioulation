@@ -15,16 +15,6 @@ import (
 )
 
 func main() {
-
-	// wrapper.SetCtx(
-	// 	// 插件名称
-	// 	"my-pluginsss",
-	// 	// 为解析插件配置，设置自定义函数
-	// 	wrapper.ParseConfigBy(parseConfig),
-	// 	// 为处理请求头，设置自定义函数
-	// 	wrapper.ProcessRequestHeadersBy(onHttpRequestHeaders),
-	// 	wrapper.ProcessRequestBody(onHttpRequestBody),
-	// )
 }
 
 func init() {
@@ -51,12 +41,16 @@ type PaddingZero struct {
 }
 
 type ConcatFields struct {
-	// Fields       []string
-	// NewFieldName string
-	// Recursive    bool
-	// KeepFields   bool
-	Fields  []string
-	NewName string
+	Fields         []string
+	NewName        string
+	Connector      string //string for connecting fields
+	DeleteConcated bool   // if keep the fields being cancated
+}
+
+type Substring struct {
+	Field      string
+	StartIndex int
+	Lenght     int
 }
 
 // 自定义插件配置
@@ -65,6 +59,7 @@ type MyConfig struct {
 	RemoveLeadingZero RemoveLeadingZero
 	PaddingZeros      []PaddingZero
 	ConcatFields      []ConcatFields
+	Substrings        []Substring
 }
 
 // 在控制台插件配置中填写的yaml配置会自动转换为json，此处直接从json这个参数里解析配置即可
@@ -101,6 +96,27 @@ func parseConfig(json gjson.Result, config *MyConfig, log logs.Log) error {
 			}
 		}
 
+		if action == "substring" {
+			content := item.Get("fields")
+			if content.Exists() {
+				var substrings []Substring
+				content.ForEach(func(key, value gjson.Result) bool {
+					fmt.Println("value forsubstring###################3", value)
+					fieldName := value.Get("name").String()
+					startIndex := value.Get("startIndex").Int()
+					length := value.Get("length").Int()
+					substring := Substring{
+						Field:      fieldName,
+						StartIndex: int(startIndex),
+						Lenght:     int(length),
+					}
+					substrings = append(substrings, substring)
+					return true
+				})
+				config.Substrings = substrings
+			}
+		}
+
 		if action == "concat" {
 			content := item.Get("concatContent")
 			if content.Exists() {
@@ -115,8 +131,10 @@ func parseConfig(json gjson.Result, config *MyConfig, log logs.Log) error {
 						})
 					}
 					concat := ConcatFields{
-						NewName: value.Get("newName").String(),
-						Fields:  names,
+						NewName:        value.Get("newName").String(),
+						Fields:         names,
+						Connector:      value.Get("connector").String(),
+						DeleteConcated: value.Get("deleteConcated").Bool(),
 					}
 					concats = append(concats, concat)
 					return true
@@ -129,29 +147,6 @@ func parseConfig(json gjson.Result, config *MyConfig, log logs.Log) error {
 	}
 
 	fmt.Println("cfg=========================>", config)
-
-	//fmt.Println("actions============================>", actions)
-	//config.actions = actions
-	/*
-		action1 := map[string]any{
-			"field": []string{"name", "email"},
-			"type":  "removeLeadingZero",
-		}
-		action2 := map[string]any{
-			"field": map[string]int{
-				"username": 20,
-				"company":  30,
-			},
-			"type": "paddingZero",
-		}
-		action3 := map[string]any{
-			"field":   []string{"firstName", "lastName"},
-			"type":    "contact",
-			"newName": "fullName",
-		}
-		config.actions = []map[string]any{
-			action1, action2, action3,
-		}*/
 	return nil
 }
 
@@ -189,12 +184,13 @@ func onHttpRequestBody(ctx wrapper.HttpContext, config MyConfig, body []byte) ty
 	// fmt.Println("padding Zero result########################", pzr)
 
 	//concatField2(result)
-	ccc := trimLeadingZeros(result, config.RemoveLeadingZero) //paddingZero(result, config.PaddingZeros) //concatField2(result, config)
+	ccc := concatField2(result, config.ConcatFields)
 
 	fmt.Println("ccc#########################", ccc)
 	return types.ActionContinue
 }
 
+/*
 func updateNestedMap(m map[string]interface{}, targetKey string, recursive bool) {
 	for key, val := range m {
 		// if key == targetKey {
@@ -218,119 +214,60 @@ func updateNestedMap(m map[string]interface{}, targetKey string, recursive bool)
 			}
 
 		}
-		concatField(m, []string{}, "fullName", false)
+		//concatField(m, []string{}, "fullName", false)
 	}
-}
+}*/
 
-func concatField(datas map[string]interface{}, fields []string, newName string, keepOld bool) map[string]interface{} {
-	contactedValue := ""
-	for _, val := range fields {
-		value, ok := datas[val]
-		if !ok {
-			return datas
-		}
-		contactedValue = contactedValue + fmt.Sprintf("%v", value)
-	}
-	datas[newName] = contactedValue
-	if keepOld == false {
-		for _, key := range fields {
-			delete(datas, key)
-		}
-	}
-	return datas
+// func concatField(datas map[string]interface{}, fields []string, newName string, keepOld bool) map[string]interface{} {
+// 	contactedValue := ""
+// 	for _, val := range fields {
+// 		value, ok := datas[val]
+// 		if !ok {
+// 			return datas
+// 		}
+// 		contactedValue = contactedValue + fmt.Sprintf("%v", value)
+// 	}
+// 	datas[newName] = contactedValue
+// 	if keepOld == false {
+// 		for _, key := range fields {
+// 			delete(datas, key)
+// 		}
+// 	}
+// 	return datas
 
-}
+// }
 
-func concatField2(datas map[string]interface{}, config MyConfig) map[string]interface{} {
-	fmt.Println("input data###############", datas)
-	concat := config.ConcatFields
-	p := &datas
+func concatField2(datas map[string]interface{}, concat []ConcatFields) map[string]interface{} {
 	for _, items := range concat {
-		//.Println("item=====================>", items.Fields)
-		concatedValue := ""
-		//newNames := strings.Split(items.NewName, ".")
 		if strings.Contains(items.NewName, ".") {
 			fieldNameArr := strings.Split(items.NewName, ".")
-			datas[fieldNameArr[0]] = map[string]interface{}{
-				fieldNameArr[1]: nil,
-			}
-		}
-
-		for _, fieldName := range items.Fields {
-			fmt.Println("fname^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^", fieldName)
-
-			if strings.Contains(fieldName, ".") {
-				accessor, errs := dotaccess.NewAccessorDot[any](p, fieldName)
-				if errs != nil {
-					return datas
-				}
-				concatedValue = concatedValue + fmt.Sprintf("%v", accessor.Get())
-
-				//newAccessor.Set(concatedValue)
-				//datas[items.NewName] = concatedValue
-				//fmt.Println("accessor$$$$$$$$$$$$$$$$$$$$$$$$$", nameAccessor)
-				//fmt.Println("get field value==================>:", nameAccessor.Get())
-
-			} else {
-				value, ok := datas[fieldName]
-				if !ok {
-					return datas
-				}
-				concatedValue = concatedValue + fmt.Sprintf("%v", value)
-				datas[items.NewName] = concatedValue
-			}
-
-		}
-
-	}
-	/*
-		for key, val := range datas {
-			if contactField.Recursive {
-				if nestedMap, ok := val.(map[string]interface{}); ok {
-					contactedValue := ""
-					for _, val := range contactField.Fields {
-						value, _ := datas[val]
-						// if !ok {
-						// 	return datas
-						// }
-						contactedValue = contactedValue + fmt.Sprintf("%v", value)
+			concatedValue := []string{}
+			connector := items.Connector
+			for _, fieldName := range items.Fields {
+				accessor, err := dotaccess.NewAccessorDot[string](&datas, fieldName)
+				if err == nil {
+					concatedValue = append(concatedValue, accessor.Get())
+					if items.DeleteConcated == true {
+						delete(datas[fieldNameArr[0]].(map[string]interface{}), strings.Split(fieldName, ".")[1])
 					}
-					datas[key] = contactedValue
-					concatField2(nestedMap, contactField)
-				} else {
-					// if targetKey == key {
-					// 	m[key] = "asss"
-					// }
-					datas[key] = val
-
 				}
-			} else {
-
-				contactedValue := ""
-				for _, val := range contactField.Fields {
-					value, _ := datas[val]
-					contactedValue = contactedValue + fmt.Sprintf("%v", value)
+			}
+			datas[fieldNameArr[0]].(map[string]interface{})[fieldNameArr[1]] = strings.Join(concatedValue, connector)
+		} else {
+			concatedValue := []string{}
+			for _, fieldName := range items.Fields {
+				value, ok := datas[fieldName]
+				if ok {
+					concatedValue = append(concatedValue, fmt.Sprintf("%v", value))
+					if items.DeleteConcated == true {
+						delete(datas, fieldName)
+					}
 				}
-				datas[key] = contactedValue
-
 			}
-			//concatField(m, []string{}, "fullName", false)
-		} */
-	/*
-		contactedValue := ""
-		for _, val := range fields {
-			value, ok := datas[val]
-			if !ok {
-				return datas
-			}
-			contactedValue = contactedValue + fmt.Sprintf("%v", value)
+			datas[items.NewName] = strings.Join(concatedValue, items.Connector)
 		}
-		datas[newName] = contactedValue
-		if keepOld == false {
-			for _, key := range fields {
-				delete(datas, key)
-			}
-		}*/
+	}
+
 	return datas
 
 }
@@ -352,6 +289,31 @@ func trimLeadingZeros(datas map[string]interface{}, removeLeadingZero RemoveLead
 	}
 	return datas
 
+}
+
+func substrings(datas map[string]interface{}, substrings []Substring) map[string]interface{} {
+	fmt.Println("substring------------------------------>", substrings)
+	for _, substring := range substrings {
+		field := substring.Field
+		if strings.Contains(field, ".") {
+			fmt.Println("###################################", substring.StartIndex)
+			accessor, err := dotaccess.NewAccessorDot[string](&datas, field)
+			if err == nil {
+				value := accessor.Get()
+				fmt.Println("value is:", value)
+				fmt.Println("startINdex####", substring.StartIndex)
+				substr := value[substring.StartIndex : substring.StartIndex+substring.Lenght]
+				accessor.Set(substr)
+			}
+		} else {
+			value, ok := datas[field]
+			if ok {
+				strValue := fmt.Sprintf("%v", value)
+				datas[field] = strValue[substring.StartIndex : substring.StartIndex+substring.Lenght]
+			}
+		}
+	}
+	return datas
 }
 
 func paddingZero(datas map[string]interface{}, fields []PaddingZero) map[string]interface{} {
